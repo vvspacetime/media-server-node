@@ -169,6 +169,8 @@ template <typename T> T SwigValueInit() {
 
 
 #include <node.h>
+//Older version of node.h does not include this
+#include <node_version.h>
 
 
 #include <v8.h>
@@ -861,6 +863,32 @@ typedef v8::PropertyCallbackInfo<v8::Value> SwigV8PropertyCallbackInfo;
 #define SWIGV8_SET_CLASS_TEMPL(class_templ, class) class_templ.Reset(v8::Isolate::GetCurrent(), class);
 #endif
 
+#ifdef NODE_VERSION
+#if NODE_VERSION_AT_LEAST(10, 12, 0)
+#define SWIG_NODE_AT_LEAST_1012
+#endif
+#endif
+
+//Necessary to check Node.js version because V8 API changes are backported in Node.js
+#if (defined(NODE_VERSION) && !defined(SWIG_NODE_AT_LEAST_1012)) || \
+    (!defined(NODE_VERSION) && (V8_MAJOR_VERSION-0) < 7)
+#define SWIGV8_TO_OBJECT(handle) (handle)->ToObject()
+#define SWIGV8_TO_STRING(handle) (handle)->ToString()
+#define SWIGV8_NUMBER_VALUE(handle) (handle)->NumberValue()
+#define SWIGV8_INTEGER_VALUE(handle) (handle)->IntegerValue()
+#define SWIGV8_BOOLEAN_VALUE(handle) (handle)->BooleanValue()
+#define SWIGV8_WRITE_UTF8(handle, buffer, len) (handle)->WriteUtf8(buffer, len)
+#define SWIGV8_UTF8_LENGTH(handle) (handle)->Utf8Length()
+#else
+#define SWIGV8_TO_OBJECT(handle) (handle)->ToObject(SWIGV8_CURRENT_CONTEXT()).ToLocalChecked()
+#define SWIGV8_TO_STRING(handle) (handle)->ToString(SWIGV8_CURRENT_CONTEXT()).ToLocalChecked()
+#define SWIGV8_NUMBER_VALUE(handle) (handle)->NumberValue(SWIGV8_CURRENT_CONTEXT()).ToChecked()
+#define SWIGV8_INTEGER_VALUE(handle) (handle)->IntegerValue(SWIGV8_CURRENT_CONTEXT()).ToChecked()
+#define SWIGV8_BOOLEAN_VALUE(handle) (handle)->BooleanValue(SWIGV8_CURRENT_CONTEXT()).ToChecked()
+#define SWIGV8_WRITE_UTF8(handle, buffer, len) (handle)->WriteUtf8(v8::Isolate::GetCurrent(), buffer, len)
+#define SWIGV8_UTF8_LENGTH(handle) (handle)->Utf8Length(v8::Isolate::GetCurrent())
+#endif
+
 /* ---------------------------------------------------------------------------
  * Error handling
  *
@@ -996,11 +1024,8 @@ SWIGRUNTIME int SWIG_V8_ConvertInstancePtr(v8::Handle<v8::Object> objRef, void *
     if(!type_valid) {
       return SWIG_TypeError;
     }
-    int newmemory = 0;
-    *ptr = SWIG_TypeCast(tc, cdata->swigCObject, &newmemory);
-  } else {
-    *ptr = cdata->swigCObject;
   }
+  *ptr = cdata->swigCObject;
   if(flags & SWIG_POINTER_DISOWN) {
     cdata->swigCMemOwn = false;
   }
@@ -1031,7 +1056,7 @@ SWIGRUNTIME int SWIG_V8_GetInstancePtr(v8::Handle<v8::Value> valRef, void **ptr)
   if(!valRef->IsObject()) {
     return SWIG_TypeError;
   }
-  v8::Handle<v8::Object> objRef = valRef->ToObject();
+  v8::Handle<v8::Object> objRef = SWIGV8_TO_OBJECT(valRef);
 
   if(objRef->InternalFieldCount() < 1) return SWIG_ERROR;
 
@@ -1125,7 +1150,7 @@ SWIGRUNTIME int SWIG_V8_ConvertPtr(v8::Handle<v8::Value> valRef, void **ptr, swi
   if(!valRef->IsObject()) {
     return SWIG_TypeError;
   }
-  v8::Handle<v8::Object> objRef = valRef->ToObject();
+  v8::Handle<v8::Object> objRef = SWIGV8_TO_OBJECT(valRef);
   return SWIG_V8_ConvertInstancePtr(objRef, ptr, info, flags);
 }
 
@@ -1252,7 +1277,7 @@ SWIGRUNTIMEINLINE
 int SwigV8Packed_Check(v8::Handle<v8::Value> valRef) {
   SWIGV8_HANDLESCOPE();
   
-  v8::Handle<v8::Object> objRef = valRef->ToObject();
+  v8::Handle<v8::Object> objRef = SWIGV8_TO_OBJECT(valRef);
   if(objRef->InternalFieldCount() < 1) return false;
 #if (V8_MAJOR_VERSION-0) < 5
   v8::Handle<v8::Value> flag = objRef->GetHiddenValue(SWIGV8_STRING_NEW("__swig__packed_data__"));
@@ -1262,7 +1287,7 @@ int SwigV8Packed_Check(v8::Handle<v8::Value> valRef) {
   if (!objRef->GetPrivate(SWIGV8_CURRENT_CONTEXT(), privateKey).ToLocal(&flag))
     return false;
 #endif
-  return (flag->IsBoolean() && flag->BooleanValue());
+  return (flag->IsBoolean() && SWIGV8_BOOLEAN_VALUE(flag));
 }
 
 SWIGRUNTIME
@@ -1272,7 +1297,7 @@ swig_type_info *SwigV8Packed_UnpackData(v8::Handle<v8::Value> valRef, void *ptr,
     
     SwigV8PackedData *sobj;
 
-    v8::Handle<v8::Object> objRef = valRef->ToObject();
+    v8::Handle<v8::Object> objRef = SWIGV8_TO_OBJECT(valRef);
 
 #if (V8_MAJOR_VERSION-0) < 4 && (SWIG_V8_VERSION < 0x031511)
     v8::Handle<v8::Value> cdataRef = objRef->GetInternalField(0);
@@ -1516,7 +1541,7 @@ SWIGRUNTIME void JS_veto_set_variable(v8::Local<v8::Name> property, v8::Local<v8
 #else
     v8::Local<v8::String> sproperty;
     if (property->ToString(SWIGV8_CURRENT_CONTEXT()).ToLocal(&sproperty)) {
-      sproperty->WriteUtf8(buffer, 256);
+      SWIGV8_WRITE_UTF8(sproperty, buffer, 256);
       res = sprintf(msg, "Tried to write read-only variable: %s.", buffer);
     }
     else {
@@ -2068,8 +2093,8 @@ class RTPStreamTransponderFacade :
 	public RTPStreamTransponder
 {
 public:
-	RTPStreamTransponderFacade(RTPOutgoingSourceGroup* outgoing,RTPSenderFacade* sender, v8::Handle<v8::Object> object) :
-		RTPStreamTransponder(outgoing, sender ? sender->get() : NULL),
+	RTPStreamTransponderFacade(RTPOutgoingSourceGroup* outgoing, RTPSenderFacade* sender, v8::Handle<v8::Object> object, bool waitingForIntra) :
+		RTPStreamTransponder(outgoing, sender ? sender->get() : NULL, waitingForIntra),
 		persistent(object)
 	{}
 
@@ -2455,7 +2480,8 @@ v8::Handle<v8::Value> SWIG_From_long  (long value)
 SWIGINTERNINLINE
 v8::Handle<v8::Value> SWIG_From_unsigned_SS_long  (unsigned long value)
 {
-  return SWIGV8_INTEGER_NEW_UNS(value);
+  return (value > LONG_MAX) ?
+    SWIGV8_INTEGER_NEW_UNS(value) : SWIGV8_INTEGER_NEW(static_cast< long >(value));
 }
 
 
@@ -2482,7 +2508,7 @@ int SWIG_AsVal_double (v8::Handle<v8::Value> obj, double *val)
   if(!obj->IsNumber()) {
     return SWIG_TypeError;
   }
-  if(val) *val = obj->NumberValue();
+  if(val) *val = SWIGV8_NUMBER_VALUE(obj);
 
   return SWIG_OK;
 }
@@ -2531,7 +2557,7 @@ int SWIG_AsVal_unsigned_SS_long (v8::Handle<v8::Value> obj, unsigned long *val)
     return SWIG_TypeError;
   }
 
-  long longVal = (long) obj->NumberValue();
+  long longVal = (long) SWIGV8_NUMBER_VALUE(obj);
 
   if(longVal < 0) {
       return SWIG_OverflowError;
@@ -2584,11 +2610,11 @@ SWIGINTERN int
 SWIG_AsCharPtrAndSize(v8::Handle<v8::Value> valRef, char** cptr, size_t* psize, int *alloc)
 {
   if(valRef->IsString()) {
-    v8::Handle<v8::String> js_str = valRef->ToString();
+    v8::Handle<v8::String> js_str = SWIGV8_TO_STRING(valRef);
 
-    size_t len = js_str->Utf8Length() + 1;
+    size_t len = SWIGV8_UTF8_LENGTH(js_str) + 1;
     char* cstr = new char[len];
-    js_str->WriteUtf8(cstr, len);
+    SWIGV8_WRITE_UTF8(js_str, cstr, len);
     
     if(alloc) *alloc = SWIG_NEWOBJ;
     if(psize) *psize = len;
@@ -2597,7 +2623,7 @@ SWIG_AsCharPtrAndSize(v8::Handle<v8::Value> valRef, char** cptr, size_t* psize, 
     return SWIG_OK;
   } else {
     if(valRef->IsObject()) {
-      v8::Handle<v8::Object> obj = valRef->ToObject();
+      v8::Handle<v8::Object> obj = SWIGV8_TO_OBJECT(valRef);
       // try if the object is a wrapped char[]
       swig_type_info* pchar_descriptor = SWIG_pchar_descriptor();
       if (pchar_descriptor) {
@@ -2626,7 +2652,7 @@ int SWIG_AsVal_int (v8::Handle<v8::Value> valRef, int* val)
   if (!valRef->IsNumber()) {
     return SWIG_TypeError;
   }
-  if(val) *val = valRef->IntegerValue();
+  if(val) *val = SWIGV8_INTEGER_VALUE(valRef);
 
   return SWIG_OK;
 }
@@ -2669,7 +2695,7 @@ int SWIG_AsVal_unsigned_SS_long_SS_long (v8::Handle<v8::Value> obj, unsigned lon
     return SWIG_TypeError;
   }
 
-  long long longVal = (long long) obj->NumberValue();
+  long long longVal = (long long) SWIGV8_NUMBER_VALUE(obj);
 
   if(longVal < 0) {
       return SWIG_OverflowError;
@@ -2695,7 +2721,8 @@ v8::Handle<v8::Value> SWIG_From_long_SS_long  (long long value)
 SWIGINTERNINLINE
 v8::Handle<v8::Value> SWIG_From_unsigned_SS_long_SS_long  (unsigned long long value)
 {
-    return SWIGV8_INTEGER_NEW_UNS(value);
+  return (value > LONG_MAX) ?
+    SWIGV8_INTEGER_NEW_UNS(value) : SWIGV8_INTEGER_NEW(static_cast< long >(value));
 }
 #endif
 
@@ -2706,7 +2733,7 @@ int SWIG_AsVal_long (v8::Handle<v8::Value> obj, long* val)
   if (!obj->IsNumber()) {
     return SWIG_TypeError;
   }
-  if(val) *val = (long) obj->IntegerValue();
+  if(val) *val = (long) SWIGV8_INTEGER_VALUE(obj);
 
   return SWIG_OK;
 }
@@ -2719,7 +2746,7 @@ int SWIG_AsVal_bool (v8::Handle<v8::Value> obj, bool *val)
     return SWIG_ERROR;
   }
 
-  if (val) *val = obj->BooleanValue();
+  if (val) *val = SWIGV8_BOOLEAN_VALUE(obj);
   return SWIG_OK;
 }
 
@@ -15801,12 +15828,15 @@ static SwigV8ReturnValue _wrap_new_RTPStreamTransponderFacade(const SwigV8Argume
   RTPOutgoingSourceGroup *arg1 = (RTPOutgoingSourceGroup *) 0 ;
   RTPSenderFacade *arg2 = (RTPSenderFacade *) 0 ;
   v8::Handle< v8::Object > arg3 ;
+  bool arg4 ;
   void *argp1 = 0 ;
   int res1 = 0 ;
   void *argp2 = 0 ;
   int res2 = 0 ;
+  bool val4 ;
+  int ecode4 = 0 ;
   RTPStreamTransponderFacade *result;
-  if(args.Length() != 3) SWIG_exception_fail(SWIG_ERROR, "Illegal number of arguments for _wrap_new_RTPStreamTransponderFacade.");
+  if(args.Length() != 4) SWIG_exception_fail(SWIG_ERROR, "Illegal number of arguments for _wrap_new_RTPStreamTransponderFacade.");
   res1 = SWIG_ConvertPtr(args[0], &argp1,SWIGTYPE_p_RTPOutgoingSourceGroup, 0 |  0 );
   if (!SWIG_IsOK(res1)) {
     SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "new_RTPStreamTransponderFacade" "', argument " "1"" of type '" "RTPOutgoingSourceGroup *""'"); 
@@ -15820,7 +15850,13 @@ static SwigV8ReturnValue _wrap_new_RTPStreamTransponderFacade(const SwigV8Argume
   {
     arg3 = v8::Handle<v8::Object>::Cast(args[2]);
   }
-  result = (RTPStreamTransponderFacade *)new RTPStreamTransponderFacade(arg1,arg2,arg3);
+  ecode4 = SWIG_AsVal_bool(args[3], &val4);
+  if (!SWIG_IsOK(ecode4)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "new_RTPStreamTransponderFacade" "', argument " "4"" of type '" "bool""'");
+  } 
+  arg4 = static_cast< bool >(val4);
+  result = (RTPStreamTransponderFacade *)new RTPStreamTransponderFacade(arg1,arg2,arg3,arg4);
+  
   
   
   

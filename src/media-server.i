@@ -452,8 +452,8 @@ class RTPStreamTransponderFacade :
 	public RTPStreamTransponder
 {
 public:
-	RTPStreamTransponderFacade(RTPOutgoingSourceGroup* outgoing,RTPSenderFacade* sender, v8::Handle<v8::Object> object) :
-		RTPStreamTransponder(outgoing, sender ? sender->get() : NULL),
+	RTPStreamTransponderFacade(RTPOutgoingSourceGroup* outgoing, RTPSenderFacade* sender, v8::Handle<v8::Object> object, bool waitingForIntra) :
+		RTPStreamTransponder(outgoing, sender ? sender->get() : NULL, waitingForIntra),
 		persistent(object)
 	{}
 
@@ -1133,7 +1133,7 @@ RTPReceiverFacade*	SessionToReceiver(RTPSessionFacade* session);
 class RTPStreamTransponderFacade 
 {
 public:
-	RTPStreamTransponderFacade(RTPOutgoingSourceGroup* outgoing,RTPSenderFacade* sender,v8::Handle<v8::Object> object);
+	RTPStreamTransponderFacade(RTPOutgoingSourceGroup* outgoing,RTPSenderFacade* sender,v8::Handle<v8::Object> object, bool waitingForIntra);
 	bool SetIncoming(RTPIncomingMediaStream* incoming, RTPReceiverFacade* receiver);
 	bool SetIncoming(RTPIncomingMediaStream* incoming, RTPReceiver* receiver);
 	void SelectLayer(int spatialLayerId,int temporalLayerId);
